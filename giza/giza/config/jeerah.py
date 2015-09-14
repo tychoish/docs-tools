@@ -15,12 +15,12 @@
 import os.path
 import logging
 
-from libgiza.config import ConfigurationBase
+from libgiza.config import ConfigurationBase, RecursiveConfigurationBase
 
 logger = logging.getLogger('giza.config.jeerah')
 
 
-class JeerahConfig(ConfigurationBase):
+class JeerahConfig(RecursiveConfigurationBase):
     @property
     def buckets(self):
         if 'buckets' in self.state:
@@ -39,16 +39,28 @@ class JeerahConfig(ConfigurationBase):
         else:
             self.state['site'] = JeerahSiteConfig(value)
 
-    # @property
-    # def projects(self):
-    #     return self.state['project']
+    @property
+    def changelog(self):
+        return self.state['changelog']
 
-    # @projects.setter
-    # def projects(self, value):
-    #     if isinstance(value, list):
-    #         self.state['project'] = value
-    #     else:
-    #         self.state['project'] = [value]
+    @changelog.setter
+    def changelog(self, value):
+        changelog_config = ConfigurationBase()
+        changelog_config._option_registry = ["ordering", "nesting", "groups"]
+
+        if isinstance(value, dict):
+            if "source" in value:
+                value = os.path.join(self.conf.paths.projectroot, self.conf.paths.global_config, value['source'])
+
+            changelog_config.ingest(value)
+
+            for k in ("ordering", "nesting", "groups"):
+                if k not in changelog_config:
+                    raise TypeError("changelog definition is incomplete")
+
+            self.state["changelog"] = changelog_config
+        else:
+            raise TypeError("invalid changelog")
 
 
 class JeerahSiteConfig(ConfigurationBase):
@@ -62,3 +74,36 @@ class JeerahSiteConfig(ConfigurationBase):
     def credentials(self, value):
         value = os.path.expanduser(value)
         self.state['credentials'] = value
+
+    @property
+    def projects(self):
+        return self.state['projects']
+
+    @projects.setter
+    def projects(self, value):
+        if isinstance(value, list):
+            for item in value:
+                if not isinstance(item, basestring):
+                    raise TypeError("jira project {0} is not a string".format(value))
+
+            self.state['projects'] = value
+        else:
+            raise TypeError("jira projects must be a list: {0}".format(value))
+
+    @property
+    def versions(self):
+        return self.state["versions"]
+
+    @versions.setter
+    def versions(self, value):
+        if isinstance(value, list):
+            for item in value:
+                if not isinstance(item, basestring):
+                    raise TypeError("jira version {0} is not a string".format(value))
+
+                if len(item.split(".")) != 3:
+                    raise TypeError("{0} is an invalid version".format(item))
+
+            self.state['versions'] = value
+        else:
+            raise TypeError("jira versions must be a list: {0}".format(value))
